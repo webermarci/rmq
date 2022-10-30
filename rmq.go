@@ -1,20 +1,14 @@
 package rmq
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
-
-type message struct {
-	ID      string `json:"id"`
-	Payload []byte `json:"payload"`
-}
 
 type QoS byte
 
@@ -93,10 +87,7 @@ func (client *Client) publish(id string, topic string, payload []byte, qos QoS) 
 	responseTopic := fmt.Sprintf("%s/r/%s", topic, id)
 	responseChannel := make(chan struct{})
 
-	data, err := json.Marshal(message{ID: id, Payload: payload})
-	if err != nil {
-		return err
-	}
+	data := []byte(fmt.Sprintf("%s#%s", id, string(payload)))
 
 	callback := func(c mqtt.Client, m mqtt.Message) {
 		if string(m.Payload()) == "received" {
@@ -125,7 +116,7 @@ func (client *Client) publish(id string, topic string, payload []byte, qos QoS) 
 	case <-responseChannel:
 		return nil
 	case <-time.After(time.Second):
-		return errors.New("reponse timed out")
+		return fmt.Errorf("reponse timed out")
 	}
 }
 
@@ -149,14 +140,16 @@ func (client *Client) Subscribe(topic string, qos QoS) (chan []byte, error) {
 	channel := make(chan []byte)
 
 	callback := func(c mqtt.Client, m mqtt.Message) {
-		var message message
-		if err := json.Unmarshal(m.Payload(), &message); err != nil {
+		split := strings.Split(string(m.Payload()), "#")
+		if len(split) != 2 {
 			return
 		}
 
-		go func() {
-			responseTopic := fmt.Sprintf("%s/r/%s", topic, message.ID)
+		id := split[0]
+		payload := []byte(split[1])
+		responseTopic := fmt.Sprintf("%s/r/%s", topic, id)
 
+		go func() {
 			for i := 0; i < 3; i++ {
 				token := client.mqttClient.Publish(responseTopic, byte(qos), false, "received")
 				token.Wait()
@@ -168,7 +161,7 @@ func (client *Client) Subscribe(topic string, qos QoS) (chan []byte, error) {
 			}
 		}()
 
-		channel <- message.Payload
+		channel <- payload
 	}
 
 	token := client.mqttClient.Subscribe(topic, byte(qos), callback)
