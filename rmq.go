@@ -90,9 +90,11 @@ func (client *Client) publish(id string, topic string, payload []byte, qos QoS) 
 	data := []byte(fmt.Sprintf("%s#%s", id, string(payload)))
 
 	callback := func(c mqtt.Client, m mqtt.Message) {
-		if string(m.Payload()) == "received" {
-			responseChannel <- struct{}{}
-		}
+		go func() {
+			if string(m.Payload()) == "received" {
+				responseChannel <- struct{}{}
+			}
+		}()
 	}
 
 	token := client.mqttClient.Subscribe(responseTopic, byte(qos), callback)
@@ -116,7 +118,7 @@ func (client *Client) publish(id string, topic string, payload []byte, qos QoS) 
 	case <-responseChannel:
 		return nil
 	case <-time.After(time.Second):
-		return fmt.Errorf("reponse timed out")
+		return fmt.Errorf("response timed out")
 	}
 }
 
@@ -140,28 +142,30 @@ func (client *Client) Subscribe(topic string, qos QoS) (chan []byte, error) {
 	channel := make(chan []byte)
 
 	callback := func(c mqtt.Client, m mqtt.Message) {
-		split := strings.Split(string(m.Payload()), "#")
-		if len(split) != 2 {
-			return
-		}
-
-		id := split[0]
-		payload := []byte(split[1])
-		responseTopic := fmt.Sprintf("%s/r/%s", topic, id)
-
 		go func() {
-			for i := 0; i < 3; i++ {
-				token := client.mqttClient.Publish(responseTopic, byte(qos), false, "received")
-				token.Wait()
-
-				if err := token.Error(); err != nil {
-					continue
-				}
+			split := strings.Split(string(m.Payload()), "#")
+			if len(split) != 2 {
 				return
 			}
-		}()
 
-		channel <- payload
+			id := split[0]
+			payload := []byte(split[1])
+			responseTopic := fmt.Sprintf("%s/r/%s", topic, id)
+
+			go func() {
+				for i := 0; i < 3; i++ {
+					token := client.mqttClient.Publish(responseTopic, byte(qos), false, "received")
+					token.Wait()
+
+					if err := token.Error(); err != nil {
+						continue
+					}
+					return
+				}
+			}()
+
+			channel <- payload
+		}()
 	}
 
 	token := client.mqttClient.Subscribe(topic, byte(qos), callback)
