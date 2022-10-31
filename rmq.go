@@ -19,11 +19,12 @@ const (
 )
 
 type Client struct {
-	url        string
-	username   string
-	password   string
-	retries    int
-	mqttClient mqtt.Client
+	url          string
+	username     string
+	password     string
+	retries      int
+	orderMatters bool
+	mqttClient   mqtt.Client
 }
 
 func init() {
@@ -32,8 +33,9 @@ func init() {
 
 func NewClient(url string) *Client {
 	return &Client{
-		url:     url,
-		retries: 3,
+		url:          url,
+		retries:      3,
+		orderMatters: false,
 	}
 }
 
@@ -52,11 +54,17 @@ func (client *Client) WithRetry(number int) *Client {
 	return client
 }
 
+func (client *Client) WithOrderMatters() *Client {
+	client.orderMatters = true
+	return client
+}
+
 func (client *Client) Connect() error {
 	options := mqtt.NewClientOptions()
 	options.SetClientID(strconv.FormatInt(time.Now().UnixNano(), 36))
 	options.SetKeepAlive(3 * time.Second)
 	options.SetAutoAckDisabled(false)
+	options.SetOrderMatters(client.orderMatters)
 	options.AddBroker(client.url)
 
 	if client.username != "" {

@@ -19,7 +19,8 @@ func TestConnection(t *testing.T) {
 func TestInvalidConnectionDetails(t *testing.T) {
 	client := NewClient("tcp://localhost:1883").
 		WithUsername("test").
-		WithPassword("test")
+		WithPassword("test").
+		WithOrderMatters()
 	err := client.Connect()
 	if err == nil {
 		t.Fatal("error expected")
@@ -61,6 +62,8 @@ func TestPublishWithoutListening(t *testing.T) {
 	if err := client.Publish(t.Name(), []byte(t.Name()), AtLeastOnce); err == nil {
 		t.Fatal("error expected")
 	}
+
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestPublishWithListening(t *testing.T) {
@@ -91,4 +94,6 @@ func TestPublishWithListening(t *testing.T) {
 	for range channel {
 		break
 	}
+
+	time.Sleep(100 * time.Millisecond)
 }
